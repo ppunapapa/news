@@ -90,6 +90,35 @@ async function performSearch(query) {
 }
 
 function processNewsItems(items, forcedCategory = null) {
+    const cleanTitle = (title) => {
+        return title.replace(/<[^>]*>?/gm, '') // Remove HTML tags
+                    .replace(/\[[^\]]*\]/g, '') // Remove ALL bracketed content like [속보], [단독]
+                    .replace(/\([^)]*\)/g, '') // Remove ALL parenthetical content like (종합), (1보)
+                    .replace(/[^\w\sㄱ-ㅎ가-힣]/g, '') // Remove special characters
+                    .replace(/\s+/g, ' ') // Collapse multiple spaces
+                    .trim()
+                    .toLowerCase();
+    };
+
+    const getSimilarity = (s1, s2) => {
+        if (s1 === s2) return 1.0;
+        const len1 = s1.length;
+        const len2 = s2.length;
+        if (len1 === 0 || len2 === 0) return 0.0;
+
+        const matrix = Array.from({ length: len1 + 1 }, () => new Array(len2 + 1).fill(0));
+        for (let i = 0; i <= len1; i++) matrix[i][0] = i;
+        for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+
+        for (let i = 1; i <= len1; i++) {
+            for (let j = 1; j <= len2; j++) {
+                const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+                matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost);
+            }
+        }
+        return 1.0 - matrix[len1][len2] / Math.max(len1, len2);
+    };
+
     const newProcessed = items.map(item => {
         let assignedCategory = forcedCategory;
         if (!assignedCategory) {
@@ -102,12 +131,21 @@ function processNewsItems(items, forcedCategory = null) {
             }
         }
         if (!assignedCategory) assignedCategory = 'society';
-        return { ...item, assignedCategory, isBackup: false };
+        return { ...item, assignedCategory, isBackup: false, cleanedTitle: cleanTitle(item.title) };
     });
 
-    const existingLinks = new Set(currentNews.map(n => n.link));
+    const SIMILARITY_THRESHOLD = 0.7;
+
     newProcessed.forEach(item => {
-        if (!existingLinks.has(item.link)) currentNews.push(item);
+        const isDuplicate = currentNews.some(existing => {
+            if (existing.link === item.link) return true;
+            if (getSimilarity(existing.cleanedTitle, item.cleanedTitle) >= SIMILARITY_THRESHOLD) return true;
+            return false;
+        });
+
+        if (!isDuplicate) {
+            currentNews.push(item);
+        }
     });
 }
 
