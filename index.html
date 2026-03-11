@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Daily News Hub</title>
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="News Hub">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="ios-theme">
+    <header class="ios-header">
+        <div class="header-content">
+            <h1>Daily News Hub</h1>
+            <input type="date" id="datePicker">
+        </div>
+    </header>
+
+    <div class="category-scroll-wrapper">
+        <div class="filter-group ios-pills">
+            <button class="filter-btn active" data-category="all">전체</button>
+            <button class="filter-btn" data-category="politics">정치</button>
+            <button class="filter-btn" data-category="economy">경제</button>
+            <button class="filter-btn" data-category="stock">증권</button>
+            <button class="filter-btn" data-category="it">IT/과학</button>
+            <button class="filter-btn" data-category="society">사회</button>
+            <button class="filter-btn" data-category="world">국제</button>
+            <button class="filter-btn" data-category="sports">스포츠</button>
+        </div>
+    </div>
+
+    <main class="container ios-main">
+        <div id="newsContainer" class="news-list">
+            <!-- News items will be injected here by script.js -->
+        </div>
+    </main>
+
+    <nav class="ios-tab-bar">
+        <button class="tab-item active" data-tab="home">
+            <span class="icon">🏠</span>
+            <span class="label">홈</span>
+        </button>
+        <button class="tab-item" data-tab="search">
+            <span class="icon">🔍</span>
+            <span class="label">검색</span>
+        </button>
+        <button class="tab-item" data-tab="bookmarks">
+            <span class="icon">🔖</span>
+            <span class="label">북마크</span>
+        </button>
+        <button class="tab-item" data-tab="settings">
+            <span class="icon">⚙️</span>
+            <span class="label">설정</span>
+        </button>
+    </nav>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+    <script src="script.js"></script>
+</body>
+</html>
