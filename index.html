@@ -35,10 +35,52 @@
         </div>
     </div>
 
-    <main class="container ios-main">
-        <div id="newsContainer" class="news-list">
-            <!-- News items will be injected here by script.js -->
-        </div>
+    <main class="ios-main">
+        <!-- Home Section -->
+        <section id="homeSection" class="tab-content active">
+            <div id="newsContainer" class="news-list">
+                <!-- News items will be injected here -->
+            </div>
+        </section>
+
+        <!-- Search Section -->
+        <section id="searchSection" class="tab-content">
+            <div class="search-bar-container">
+                <input type="text" id="searchInput" placeholder="뉴스 키워드 검색...">
+                <button id="searchBtn">검색</button>
+            </div>
+            <div id="searchResults" class="news-list"></div>
+        </section>
+
+        <!-- Bookmarks Section -->
+        <section id="bookmarksSection" class="tab-content">
+            <h2 class="section-title">저장된 기사</h2>
+            <div id="bookmarksList" class="news-list"></div>
+        </section>
+
+        <!-- Settings Section -->
+        <section id="settingsSection" class="tab-content">
+            <h2 class="section-title">설정</h2>
+            <div class="settings-list">
+                <div class="settings-item">
+                    <span>다크 모드</span>
+                    <label class="ios-switch">
+                        <input type="checkbox" id="darkModeToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="settings-item">
+                    <span>알림 설정</span>
+                    <label class="ios-switch">
+                        <input type="checkbox" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="settings-item" id="clearData">
+                    <span style="color: #FF2D55;">캐시 및 저장 데이터 삭제</span>
+                </div>
+            </div>
+        </section>
     </main>
 
     <nav class="ios-tab-bar">

@@ -3,9 +3,16 @@ const NAVER_CLIENT_SECRET = 'idq86pgv9h';
 
 const datePicker = document.getElementById('datePicker');
 const newsContainer = document.getElementById('newsContainer');
+const searchInput = document.getElementById('searchInput');
+const searchBtn = document.getElementById('searchBtn');
+const searchResults = document.getElementById('searchResults');
+const bookmarksList = document.getElementById('bookmarksList');
+const darkModeToggle = document.getElementById('darkModeToggle');
+const clearDataBtn = document.getElementById('clearData');
 
 let currentNews = []; 
 let activeCategory = 'all';
+let bookmarks = JSON.parse(localStorage.getItem('news_bookmarks') || '[]');
 const categories = ['politics', 'economy', 'stock', 'it', 'society', 'world', 'sports'];
 
 const categoryKeywords = {
@@ -18,7 +25,6 @@ const categoryKeywords = {
     sports: ['스포츠', '야구', '축구', '배구', '농구', '올림픽', '월드컵', '골프', '테니스', 'kbo', 'epl', '프리미어리그', '손흥민', '김민재', '이강인', '메이저리그', 'mlb', '한화이글스', '기아타이거즈', '토트넘', '리그1', '분데스리가', '황희찬']
 };
 
-// 로컬 날짜(KST) 기준 YYYY-MM-DD 문자열을 반환하는 헬퍼 함수
 function getLocalDateStr(dateInput) {
     const d = new Date(dateInput);
     if (isNaN(d.getTime())) return "";
@@ -31,9 +37,7 @@ function getLocalDateStr(dateInput) {
 async function fetchNews(selectedDate) {
     showLoading();
     currentNews = [];
-    
-    // 1단계: 통합 실시간 속보 수집 (더 넓게 검색)
-    const baseQueries = [`최신 종합 속보`, `뉴스 하이라이트`, `실시간 이슈 뉴스`, `분야별 주요 기사`, `조이시티 소식`];
+    const baseQueries = [`최신 종합 속보`, `뉴스 하이라이트`, `실시간 이슈 뉴스`, `조이시티 소식`];
     let allFetchedItems = [];
 
     for (let query of baseQueries) {
@@ -44,36 +48,25 @@ async function fetchNews(selectedDate) {
 
     let uniqueItems = Array.from(new Set(allFetchedItems.map(a => a.link))).map(link => allFetchedItems.find(a => a.link === link));
     let initialFiltered = uniqueItems.filter(item => getLocalDateStr(item.pubDate) === selectedDate);
-    
     processNewsItems(initialFiltered);
 
-    // 2단계: 카테고리별 부족분 강력 보충 (타겟 수집 대폭 강화)
     for (let cat of categories) {
         let counts = getCategoryCounts();
-        if ((counts[cat] || 0) < 10) { // 목표 수량 10개로 상향
-            const searchTerms = [
-                `${getCategoryName(cat)} ${selectedDate.replace(/-/g, '.')}`,
-                `${getCategoryName(cat)} 최신 뉴스`,
-                `${getCategoryName(cat)} 실시간 속보`
-            ];
-
+        if ((counts[cat] || 0) < 10) {
+            const searchTerms = [`${getCategoryName(cat)} ${selectedDate.replace(/-/g, '.')}`, `${getCategoryName(cat)} 속보`];
             for (let t of searchTerms) {
                 const catItems = await performSearch(t);
                 const catFiltered = catItems.filter(item => getLocalDateStr(item.pubDate) === selectedDate);
                 processNewsItems(catFiltered, cat);
-                
-                // 해당 카테고리가 10개를 넘으면 추가 검색 중단
                 if (getCategoryCounts()[cat] >= 10) break;
             }
         }
     }
 
-    // 3단계: 최종적으로도 데이터가 전혀 없으면 백업 모드
     if (currentNews.length === 0) {
-        useMockData(selectedDate, "해당 날짜의 실시간 소식이 일시적으로 연결되지 않습니다. 주요 카테고리별 소식을 대신 제공합니다.");
+        useMockData(selectedDate, "해당 날짜의 실시간 소식이 없습니다. 주요 분야별 브리핑을 전해드립니다.");
         return;
     }
-
     renderNews();
 }
 
@@ -122,18 +115,166 @@ function getCategoryCounts() {
     return currentNews.reduce((acc, i) => { acc[i.assignedCategory] = (acc[i.assignedCategory] || 0) + 1; return acc; }, {});
 }
 
+function renderNews(targetContainer = newsContainer, data = currentNews, isSearch = false) {
+    targetContainer.innerHTML = '';
+    let filtered = data;
+    if (!isSearch) {
+        filtered = activeCategory === 'all' ? data : data.filter(i => i.assignedCategory === activeCategory);
+        filtered.sort((a, b) => {
+            const aJoy = (a.title + a.description).includes('조이시티') ? 1 : 0;
+            const bJoy = (b.title + b.description).includes('조이시티') ? 1 : 0;
+            if (aJoy !== bJoy) return bJoy - aJoy;
+            return new Date(b.pubDate) - new Date(a.pubDate);
+        });
+    }
+
+    const decode = (str) => {
+        const txt = document.createElement('textarea');
+        txt.innerHTML = str || '';
+        const cleaned = txt.value.replace(/<[^>]*>?/gm, '').trim();
+        const fxt = document.createElement('textarea');
+        fxt.innerHTML = cleaned;
+        return fxt.value;
+    };
+
+    filtered.forEach((item) => {
+        const card = document.createElement('article');
+        card.className = 'news-card';
+        if (item.title.includes('조이시티')) card.classList.add('highlight-joycity');
+        
+        const link = item.originallink || item.link || '#';
+        const formattedDate = new Date(item.pubDate).toLocaleDateString('ko-KR');
+        const isBookmarked = bookmarks.some(b => b.link === item.link);
+        
+        card.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div class="category cat-${item.assignedCategory}">${getCategoryName(item.assignedCategory)}</div>
+                <button class="bookmark-btn" style="background:none; border:none; font-size: 18px; cursor:pointer;">
+                    ${isBookmarked ? '🔖' : '📑'}
+                </button>
+            </div>
+            <h3><a href="${link}" target="_blank" class="title-link">${decode(item.title)}</a></h3>
+            <p class="news-content">${decode(item.description)}</p>
+            <div class="news-footer">
+                <a href="${link}" target="_blank" class="source">본문 보기</a>
+                <span class="date-badge">${formattedDate}</span>
+            </div>
+        `;
+
+        card.querySelector('.bookmark-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleBookmark(item);
+            renderNews(targetContainer, data, isSearch);
+            if (activeCategory === 'bookmarks') renderBookmarks();
+        });
+
+        targetContainer.appendChild(card);
+    });
+}
+
+// 탭 전환 로직
+document.querySelectorAll('.tab-item').forEach(tab => {
+    tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+        document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.getElementById(`${tabName}Section`).classList.add('active');
+
+        // 홈 탭이 아닐 경우 카테고리 바 숨기기
+        const categoryBar = document.querySelector('.category-scroll-wrapper');
+        categoryBar.style.display = tabName === 'home' ? 'block' : 'none';
+
+        if (tabName === 'bookmarks') renderBookmarks();
+    });
+});
+
+// 카테고리 필터 로직
+document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeCategory = btn.dataset.category;
+        renderNews();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+});
+
+// 검색 기능
+searchBtn.addEventListener('click', async () => {
+    const query = searchInput.value.trim();
+    if (!query) return;
+    searchResults.innerHTML = '<div class="loader">검색 기사를 불러오는 중...</div>';
+    const items = await performSearch(query);
+    if (items.length === 0) {
+        searchResults.innerHTML = '<div style="text-align:center; padding: 40px; color: var(--ios-grey);">검색 결과가 없습니다.</div>';
+    } else {
+        const processed = items.map(i => ({ ...i, assignedCategory: 'society' }));
+        renderNews(searchResults, processed, true);
+    }
+});
+
+searchInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') searchBtn.click();
+});
+
+// 북마크 기능
+function toggleBookmark(item) {
+    const index = bookmarks.findIndex(b => b.link === item.link);
+    if (index === -1) {
+        bookmarks.push(item);
+    } else {
+        bookmarks.splice(index, 1);
+    }
+    localStorage.setItem('news_bookmarks', JSON.stringify(bookmarks));
+}
+
+function renderBookmarks() {
+    if (bookmarks.length === 0) {
+        bookmarksList.innerHTML = '<div style="text-align:center; padding: 60px; color: var(--ios-grey);">저장된 기사가 없습니다. 마음에 드는 기사의 📑 아이콘을 눌러보세요.</div>';
+    } else {
+        renderNews(bookmarksList, bookmarks, true);
+    }
+}
+
+// 설정 기능
+darkModeToggle.addEventListener('change', () => {
+    document.body.classList.toggle('dark-mode', darkModeToggle.checked);
+    localStorage.setItem('news_dark_mode', darkModeToggle.checked);
+});
+
+clearDataBtn.addEventListener('click', () => {
+    if (confirm('모든 북마크와 설정 데이터를 초기화할까요?')) {
+        localStorage.clear();
+        location.reload();
+    }
+});
+
+function initSettings() {
+    const isDark = localStorage.getItem('news_dark_mode') === 'true';
+    darkModeToggle.checked = isDark;
+    if (isDark) document.body.classList.add('dark-mode');
+}
+
+function showLoading() {
+    newsContainer.innerHTML = `<div class="loader">뉴스를 정밀 동기화 중...</div>`;
+}
+
+function getCategoryName(cat) {
+    const names = { politics: '정치', economy: '경제', stock: '증권/주식', it: 'IT/과학', society: '사회', world: '국제', sports: '스포츠' };
+    return names[cat] || '기타';
+}
+
 function useMockData(selectedDate, msg) {
     currentNews = [];
     const industries = [
-        { cat: 'politics', title: "국회, 민생법안 처리를 위한 여야 협력 강화 합의", desc: "국민들의 실생활에 직접적인 도움을 줄 수 있는 주요 현안들을 우선적으로 처리하기 위해 정치권이 힘을 모으고 있습니다." },
-        { cat: 'economy', title: "국내 수출 업계, 글로벌 시장 점유율 지속 확대 성과", desc: "대한민국 기업들이 우수한 기술력을 바탕으로 해외 시장에서 괄목할 만한 성장을 거두며 경제 활력을 불어넣고 있습니다." },
-        { cat: 'stock', title: "[특징주] 조이시티, 차세대 전략 게임 글로벌 시장 안착 기대감", desc: "조이시티의 탄탄한 신작 라인업과 글로벌 서비스 역량이 시장의 주목을 받으며 투자 심리를 자극하고 있습니다." },
-        { cat: 'it', title: "K-인공지능(AI) 기술 혁신: 글로벌 테크 시장의 새로운 주역", desc: "대한민국 IT 기업들이 독자적인 AI 기술 개발과 상용화에 성공하며 전 세계 테크 산업의 흐름을 주도하고 있습니다." },
-        { cat: 'it', title: "삼성전자, 차세대 반도체 공격적 투자로 초격차 유지", desc: "글로벌 시장의 불확실성 속에서도 반도체 분야의 압도적인 기술 우위를 점하기 위한 대규모 투자가 이어지고 있습니다." },
-        { cat: 'it', title: "애플, 새로운 하이브리드 워크 스테이션 공개 예정", desc: "성능과 휴대성을 동시에 잡은 차세대 기기 출시 소식에 전 세계 테크 매니아들의 관심이 집중되고 있습니다." },
-        { cat: 'society', title: "봄철 나들이 인파 증가: 지자체별 풍성한 지역 축제 개최", desc: "따뜻한 날씨와 함께 전국 각지에서 특색 있는 꽃축제 등 다양한 행사들이 열리며 시민들에게 즐거움을 선사하고 있습니다." },
-        { cat: 'world', title: "국제 사회, 에너지 공급망 다변화 및 환경 보호 공조 강화", desc: "주요 국가들이 지속 가능한 미래를 위해 에너지 안보 체계를 구축하고 기후 위기 대응을 위한 전략적 파트너십을 맺고 있습니다." },
-        { cat: 'sports', title: "대한민국 태극전사들, 유럽 무대서 '골 폭풍' 연일 승전보", desc: "유럽 명문 구단에서 활약하는 우리 선수들이 최고의 기량을 선보이며 전 세계 축구 팬들의 찬사를 받고 있습니다." }
+        { cat: 'politics', title: "국회, 민생법안 처리를 위한 여야 협력 강화 합의", desc: "민생 경제 회복을 최우선 과제로 삼고 여야가 주요 법안 처리에 속도를 내기로 합의했습니다.", link: "https://news.naver.com/" },
+        { cat: 'economy', title: "국내 기업들, 글로벌 시장 점유율 지속 확대 성과", desc: "기술력과 품질을 앞세운 우리 기업들이 세계 시장에서 괄목할 만한 성장을 거두며 활력을 불어넣고 있습니다.", link: "https://news.naver.com/" },
+        { cat: 'stock', title: "[특징주] 조이시티, 차세대 전략 게임 글로벌 시장 안착 기대감", desc: "조이시티의 탄탄한 신작 라인업과 글로벌 서비스 역량이 시장의 주목을 받으며 투자 심리를 자극하고 있습니다.", link: "https://news.naver.com/" },
+        { cat: 'it', title: "K-인공지능(AI) 기술 혁신: 글로벌 테크 시장의 새로운 주역", desc: "대한민국 IT 기업들이 독자적인 AI 기술 개발과 상용화에 성공하며 전 세계 테크 산업의 흐름을 주도하고 있습니다.", link: "https://news.naver.com/" },
+        { cat: 'world', title: "국제 사회, 에너지 공급망 다변화 및 환경 보호 공조 강화", desc: "주요 국가들이 지속 가능한 미래를 위해 에너지 안보 체계를 구축하고 기후 위기 대응을 위한 전략적 파트너십을 맺고 있습니다.", link: "https://news.naver.com/" },
+        { cat: 'sports', title: "대한민국 태극전사들, 유럽 무대서 '골 폭풍' 연일 승전보", desc: "유럽 명문 구단에서 활약하는 우리 선수들이 최고의 기량을 선보이며 전 세계 축구 팬들의 찬사를 받고 있습니다.", link: "https://news.naver.com/" }
     ];
 
     industries.forEach((art, idx) => {
@@ -142,7 +283,7 @@ function useMockData(selectedDate, msg) {
             description: art.desc,
             pubDate: selectedDate,
             assignedCategory: art.cat,
-            originallink: "https://news.naver.com/",
+            originallink: art.link,
             link: `https://news.naver.com/mock-${idx}`,
             isBackup: true
         });
@@ -156,102 +297,15 @@ function showStatusNotice(msg, isPink) {
     if (document.getElementById('statusNotice')) document.getElementById('statusNotice').remove();
     const notice = document.createElement('div');
     notice.id = 'statusNotice';
-    notice.style.cssText = `grid-column: 1/-1; text-align: center; color: ${isPink ? '#f472b6' : '#007AFF'}; padding: 1.5rem; background: ${isPink ? 'rgba(244,114,182,0.1)' : 'rgba(0,122,255,0.08)'}; border-radius: 12px; margin-top: 1rem; margin-bottom: 1rem; border: 0.5px solid ${isPink ? 'rgba(244,114,182,0.3)' : 'rgba(0,122,255,0.2)'}; font-size: 0.8rem;`;
+    notice.style.cssText = `grid-column: 1/-1; text-align: center; color: ${isPink ? '#f472b6' : '#007AFF'}; padding: 1rem; background: ${isPink ? 'rgba(244,114,182,0.1)' : 'rgba(0,122,255,0.08)'}; border-radius: 12px; margin-bottom: 1rem; border: 0.5px solid ${isPink ? 'rgba(244,114,182,0.3)' : 'rgba(0,122,255,0.2)'}; font-size: 13px;`;
     notice.innerHTML = `<span>${msg}</span>`;
-    newsContainer.appendChild(notice);
-}
-
-function renderNews() {
-    newsContainer.innerHTML = '';
-    const filtered = activeCategory === 'all' ? currentNews : currentNews.filter(i => i.assignedCategory === activeCategory);
-
-    filtered.sort((a, b) => {
-        const aJoy = (a.title + a.description).includes('조이시티') ? 1 : 0;
-        const bJoy = (b.title + b.description).includes('조이시티') ? 1 : 0;
-        if (aJoy !== bJoy) return bJoy - aJoy;
-        return new Date(b.pubDate) - new Date(a.pubDate);
-    });
-
-    const decode = (str) => {
-        const txt = document.createElement('textarea');
-        txt.innerHTML = str || '';
-        const cleaned = txt.value.replace(/<[^>]*>?/gm, '').trim();
-        const fxt = document.createElement('textarea');
-        fxt.innerHTML = cleaned;
-        return fxt.value;
-    };
-
-    filtered.forEach((item, index) => {
-        const card = document.createElement('article');
-        card.className = 'news-card';
-        if (item.title.includes('조이시티')) card.classList.add('highlight-joycity');
-        
-        const link = item.originallink || item.link || '#';
-        const formattedDate = new Date(item.pubDate).toLocaleDateString('ko-KR');
-        
-        card.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <div class="category cat-${item.assignedCategory}">${getCategoryName(item.assignedCategory)}</div>
-                <div style="font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: ${item.isBackup ? 'rgba(255,45,85,0.1)' : 'rgba(52,199,89,0.1)'}; color: ${item.isBackup ? '#FF2D55' : '#34C759'};">
-                    ${item.isBackup ? 'BACKUP' : 'LIVE'}
-                </div>
-            </div>
-            <h3><a href="${link}" target="_blank" class="title-link">${decode(item.title)}</a></h3>
-            <p class="news-content">${decode(item.description)}</p>
-            <div class="news-footer">
-                <a href="${link}" target="_blank" class="source">기사 본문 읽기</a>
-                <span class="date-badge">${formattedDate}</span>
-            </div>
-        `;
-        newsContainer.appendChild(card);
-    });
-}
-
-// iOS Tab Bar 및 필터 로직
-document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        activeCategory = btn.dataset.category;
-        renderNews();
-        // 모발 터치 피드백
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-});
-
-document.querySelectorAll('.tab-item').forEach(tab => {
-    tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        const tabName = tab.dataset.tab;
-        
-        if (tabName === 'home') {
-            activeCategory = 'all';
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-            document.querySelector('.filter-btn[data-category="all"]').classList.add('active');
-            renderNews();
-        } else if (tabName === 'search') {
-            alert('검색 기능은 준비 중입니다.');
-        } else if (tabName === 'bookmarks') {
-            alert('북마크 기능은 준비 중입니다.');
-        } else if (tabName === 'settings') {
-            alert('설정 메뉴입니다. 다크모드 및 알림 설정을 지원할 예정입니다.');
-        }
-    });
-});
-
-function showLoading() {
-    newsContainer.innerHTML = `<div class="loader">로컬 날짜(KST) 기준으로 정밀 동기화 중...</div>`;
-}
-
-function getCategoryName(cat) {
-    const names = { politics: '정치', economy: '경제', stock: '증권/주식', it: 'IT/과학', society: '사회', world: '국제', sports: '스포츠' };
-    return names[cat] || '기타';
+    newsContainer.prepend(notice);
 }
 
 datePicker.addEventListener('change', (e) => fetchNews(e.target.value));
 
 window.onload = () => {
+    initSettings();
     const today = new Date().toLocaleDateString('en-CA');
     datePicker.value = today;
     fetchNews(today);
